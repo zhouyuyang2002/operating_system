@@ -19,7 +19,13 @@
 // | Page Directory |   Page Table   | Offset within Page  |
 // |      Index     |      Index     |                     |
 // +----------------+----------------+---------------------+
-//  \--- PDX(la) --/ \--- PTX(la) --/ \---- PGOFF(la) ----/
+//  \--- PDX(la) --/ \--- PTX(la) --/ \---- PGOFF(la) ----
+
+
+
+
+
+
 //  \---------- PGNUM(la) ----------/
 //
 // The PDX, PTX, PGOFF, and PGNUM macros decompose linear addresses as shown.
