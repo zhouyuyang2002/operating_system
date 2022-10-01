@@ -10,6 +10,7 @@
 #include <kern/console.h>
 #include <kern/monitor.h>
 #include <kern/kdebug.h>
+#include <kern/pmap.h>
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
 
@@ -24,7 +25,9 @@ struct Command {
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
-	{ "backtrace", "Display a listing of function call frames", mon_backtrace }
+	{ "backtrace", "Display a listing of function call frames", mon_backtrace },
+	{ "showmappings", "Show the mapping between physical address and virtualaddress", mon_showmappings},
+	{ "perm", "Set/Change/Clear the permission of the page", mon_setperm}
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -86,14 +89,91 @@ mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 		ebp_val = new_ebp_val;
 	}
 	return 0;
-	// trace format
-	//  ebp f0109e58  eip f0100a62  args 00000001 f0109e80 f0109e98 f0100ed2 00000031
-	//         kern/monitor.c:143: monitor+106
+}
 
-	// Your code here.
+int mon_showmappings(int argc, char** argv, struct Trapframe *tf){
+	extern pte_t* pgdir_walk(pde_t* pgdir, const void* va, int create);
+	extern pde_t* kern_pgdir;
+	if (argc != 2 && argc != 3){
+		cprintf("Usage: showmappings ADDR1 [ADDR2]\n");
+		return 0;
+	}
+
+	long begin_itr = strtol(argv[1], NULL, 16);
+	long end_itr = (argc == 3? strtol(argv[2], NULL, 16): begin_itr);
+	if (begin_itr > end_itr){
+		long temp = begin_itr;
+		begin_itr = end_itr;
+		end_itr = temp;
+	}
+
+	if (end_itr > 0xffffffff)
+		end_itr = 0xffffffff;
+	begin_itr = ROUNDUP(begin_itr, PGSIZE);
+	end_itr = ROUNDUP(end_itr, PGSIZE);
+
+	
+	for (long itr = begin_itr; itr <= end_itr; itr += PGSIZE){
+		cprintf("%08x ----- %08x :", itr, itr + PGSIZE);
+		pte_t* pte_itr = pgdir_walk(kern_pgdir, (void*)itr, false);
+		if (pte_itr == NULL)
+			cprintf("Page doesn't exist\n");
+		else{
+			cprintf("ADDR = %08x, ", PTE_ADDR(*pte_itr));
+			cprintf("PTE_P = %01x, ", (uint8_t)(*pte_itr & PTE_P));
+			cprintf("PTE_W = %01x, ", (uint8_t)(*pte_itr & PTE_W));
+			cprintf("PTE_U = %01x\n", (uint8_t)(*pte_itr & PTE_U));
+		}
+	}
+
 	return 0;
 }
 
+int mon_setperm(int argc, char** argv, struct Trapframe *tf){
+	extern pte_t* pgdir_walk(pde_t* pgdir, const void* va, int create);
+	extern pde_t* kern_pgdir;
+
+	if (argc != 4){
+		cprintf("usage: perm ADDR [add/clear] [U/W/P] or perm ADDR [set] perm_code");
+		return 0;
+	}
+	long addr = strtol(argv[1], NULL, 16);
+	pte_t* pte_itr = pgdir_walk(kern_pgdir, (void*) addr, false);
+	if (pte_itr == NULL){
+		cprintf("Page Doesn't Exist!");
+		return 0;
+	}
+	cprintf("Before:");
+	cprintf("PTE_P = %01x, ", (uint8_t)(*pte_itr & PTE_P));
+	cprintf("PTE_W = %01x, ", (uint8_t)(*pte_itr & PTE_W));
+	cprintf("PTE_U = %01x\n", (uint8_t)(*pte_itr & PTE_U));
+
+	if (strcmp("set", argv[2]) == 0){
+		int perm_code = strtol(argv[3], NULL, 2);
+		*pte_itr = *pte_itr ^ (perm_code & 7) ^ (*pte_itr & 7);
+	}
+	if (strcmp("add", argv[2]) == 0){
+		int perm_code = 0;
+		if (strcmp("U", argv[3]) == 0) perm_code = PTE_U;
+		if (strcmp("P", argv[3]) == 0) perm_code = PTE_P;
+		if (strcmp("W", argv[3]) == 0) perm_code = PTE_W;
+		*pte_itr = *pte_itr | perm_code;
+	}
+	if (strcmp("clear", argv[2]) == 0){
+		int perm_code = 0;
+		if (strcmp("U", argv[3]) == 0) perm_code = PTE_U;
+		if (strcmp("P", argv[3]) == 0) perm_code = PTE_P;
+		if (strcmp("W", argv[3]) == 0) perm_code = PTE_W;
+		*pte_itr = *pte_itr & (~perm_code);
+	}
+
+	cprintf("After:");
+	cprintf("PTE_P = %01x, ", (uint8_t)(*pte_itr & PTE_P));
+	cprintf("PTE_W = %01x, ", (uint8_t)(*pte_itr & PTE_W));
+	cprintf("PTE_U = %01x\n", (uint8_t)(*pte_itr & PTE_U));
+
+	return 0;
+}
 
 
 /***** Kernel monitor command interpreter *****/
@@ -119,7 +199,7 @@ runcmd(char *buf, struct Trapframe *tf)
 			break;
 
 		// save and scan past next arg
-		if (argc == MAXARGS-1) {
+		if (argc == MAXARGS - 1) {
 			cprintf("Too many arguments (max %d)\n", MAXARGS);
 			return 0;
 		}

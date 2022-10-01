@@ -390,7 +390,7 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 		
 		page_itr -> pp_ref++;
 		*dict_ptr = page2pa(page_itr) | PTE_P | PTE_W | PTE_U;
-		return (pte_t*)KADDR(PTE_ADDR(*dict_ptr)) + PTX(va) * sizeof(pte_t));
+		return KADDR(PTE_ADDR(*dict_ptr)) + PTX(va) * sizeof(pte_t);
 	}
 }
 
