@@ -10,6 +10,7 @@
 #include <kern/console.h>
 #include <kern/monitor.h>
 #include <kern/kdebug.h>
+#include <kern/trap.h>
 #include <kern/pmap.h>
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
@@ -27,7 +28,11 @@ static struct Command commands[] = {
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
 	{ "backtrace", "Display a listing of function call frames", mon_backtrace },
 	{ "showmappings", "Show the mapping between physical address and virtualaddress", mon_showmappings},
-	{ "perm", "Set/Change/Clear the permission of the page", mon_setperm}
+	{ "perm", "Set/Change/Clear the permission of the page", mon_setperm},
+	{ "c", "Continue execution the environment in current tf", moniter_ci},
+	{ "continue", "Continue execution the environment in current tf", moniter_ci},
+	{ "si", "Continue execution the next instruction in current tf", moniter_si},
+	{ "stepi", "Continue execution the next instructionin current tf", moniter_si},
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -175,6 +180,40 @@ int mon_setperm(int argc, char** argv, struct Trapframe *tf){
 	return 0;
 }
 
+int moniter_ci(int argc, char** argv, struct Trapframe *tf){
+	extern pte_t* pgdir_walk(pde_t* pgdir, const void* va, int create);
+	extern pde_t* kern_pgdir;
+
+	if (argc != 1){
+		cprintf("usage: c\n continue\n");
+		return 0;
+	}
+	if (tf == NULL){
+		cprintf("Not in backtrace mode\n");
+		return 0;
+	}
+	curenv->env_tf = *tf;
+	curenv->env_tf.tf_eflags &= ~0x100;
+	env_run(curenv);
+	return 0;
+}
+int moniter_si(int argc, char** argv, struct Trapframe *tf){
+	extern pte_t* pgdir_walk(pde_t* pgdir, const void* va, int create);
+	extern pde_t* kern_pgdir;
+
+	if (argc != 1){
+		cprintf("usage: si\n stepi\n");
+		return 0;
+	}
+	if (tf == NULL){
+		cprintf("Not in backtrace mode\n");
+		return 0;
+	}
+	curenv->env_tf = *tf;
+	curenv->env_tf.tf_eflags |= 0x100;
+	env_run(curenv);
+	return 0;
+}
 
 /***** Kernel monitor command interpreter *****/
 
@@ -228,6 +267,8 @@ monitor(struct Trapframe *tf)
 	cprintf("Welcome to the JOS kernel monitor!\n");
 	cprintf("Type 'help' for a list of commands.\n");
 
+	if (tf != NULL)
+		print_trapframe(tf);
 
 	while (1) {
 		buf = readline("K> ");
