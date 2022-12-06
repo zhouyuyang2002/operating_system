@@ -1,0 +1,283 @@
+\documentclass[11pt]{article}
+\usepackage[UTF8]{ctex}
+\usepackage[a4paper]{geometry}
+\geometry{left=2.0cm,right=2.0cm,top=2.5cm,bottom=2.5cm}
+
+\usepackage{comment}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{diagbox}
+\usepackage{amsmath,amsfonts,graphicx,amssymb,bm,amsthm}
+\usepackage{algorithm,algorithmicx}
+\usepackage[noend]{algpseudocode}
+\usepackage{fancyhdr}
+\usepackage{tikz}
+\usepackage{graphicx}
+\usepackage{verbatim}
+\usetikzlibrary{arrows,automata}
+\usepackage{hyperref}
+
+\setlength{\headheight}{14pt}
+\setlength{\parindent}{0 in}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{claim}[theorem]{Claim}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}[theorem]{Definition}
+
+
+\newcommand\E{\mathbb{E}}
+\newcommand{\hwid}{4}			% 第几次作业
+\newcommand{\name}{周雨扬} 		% 你的名字
+\newcommand{\id}{2000013061} 	% 你的学号
+
+
+\usetikzlibrary{positioning}
+
+\begin{document}
+
+    \pagestyle{fancy}
+    \lhead{Peking University}
+    \chead{}
+    \rhead{Operating Systems}
+
+    \begin{center}
+        {\LARGE \bf Homework \#\hwid}\\
+        {\Large \name}\\
+        {\Large \id}\\
+    \end{center}
+
+	\section{Challanges}
+		\par 本次作业完成了所有的代码补全任务，没有做 challange.
+		
+		\par 注：测试 \texttt{primes} 的时候因为电脑有点带不动，外加上虚拟机速度比本机更慢，他在 30 秒内大约只能处理大约 $100 \sim 200$ 个 \texttt{fork} 文件，因此会被评测程序直接杀死。
+		
+		\par 因此我在虚拟机上执行了 \texttt{make run-primes >run\_primes.out}，将输出 \texttt{run\_primes.out} 随源文件一并上传。
+		
+	\section{Exercise 1}
+	
+		
+	\subsection*{mmio\_map\_region()}
+		\par 根据代码中给出的描述简单模拟即可。需要注意的是我们需要对映射的内存按整页取整，同时需要检查内存越界的问题。
+		
+	\section{Exercise 2}
+	
+	\subsection*{page\_init()}
+	
+		\par 注意到我们额外声明了一页内存 \texttt{MPENTRY\_PADDR}, 用作每个处理器启动的引导区。因此直接将 \texttt{MPENTRY\_PADDR} 对应的页从空页列表中一处即可。
+		
+	\subsection*{Question 1}
+	
+		\par 观察 \texttt{kern/mpentry.S} 上方注释，原因如下：
+		
+		\begin{itemize}
+			\item 第一个被启动的 CPU 是冷启动，此时虚拟内存尚未完成设置，因此代码都是存储在低地址的引导块中。因而不需要对其进行映射操作。
+			
+			\item 之后所有启动的 CPU 实际上都是第一个 CPU 设置好环境后再启动。此时代码空间已经被与处理过，因此其初始运行位置高于 \texttt{KERNBASE}。但是其仍然需要在低地址空间下启动因为 \texttt{DS} 为 0。因此做了上述偏移。
+		\end{itemize}
+	\section{Exercise 3}
+	
+	\subsection*{mem\_init\_mp()}
+	
+		\par 根据函数描述简单操作即可。唯一需要注意的是在传入 \texttt{boot\_map\_region} 参数的时候，一定传入的是 \texttt{percpu\_kstacks[i]} 对应的物理地址。
+		
+	\section{Exercise 4}
+	
+	\subsection*{trap\_init\_percpu()}
+	
+	\par 首先我们需要用 \texttt{thiscpu->ts} 替换所有的 \texttt{ts}，因为我们只需要初始化当前 CPU 的中断机制即可。同理修改 \texttt{ts\_esp0} 的时候也需要将栈顶修改为 Exercise 3 中，当前 CPU 对应的栈顶。
+	
+	\par TSS 描述符的修改注释已经给出，之后 TSS 选择符照猫画虎，将描述符乘以 8 即可。其他不需要修改。
+	
+	\section{Exercise 5}
+	
+	\subsection*{i386\_init(), mp\_main(), trap(), env\_run()}
+	
+	\par 按照描述操作即可。注意我们需要在进入内核态时候上锁，推出内核态时候释放锁。
+	
+	\subsection*{Question 2}
+	
+	\par 考虑多个处理器同时出现了异常需要处理的情况。假定在处理器 1 处理异常的时候处理到一半，正好进行了上下文切换（例如最后我们实现的多处理器之间通信)，切换到了发生异常的处理器 2. 则在混用内核栈的情况下异常处理栈中信息会乱序排列，导致错误。
+	
+	\section{Exercise 6}
+	
+	\subsection*{sched\_yield()}
+	
+	\par 观察上下文发现 \texttt{curenv} 被定义成了 \texttt{thiscpu->cur\_env}。这可以剩下一点代码长度。
+	
+	\par 我们可以通过 \texttt{curenv} 获取当前环境的编号。之后我们只需要对于所有的 \texttt{NENV} 个可能的环境从当前编号向后依次轮询，判定是否可以执行即可。如果可以执行则利用 \texttt{env\_run} 执行当前环境。
+	
+	\par 最后切换回当前进程即可。注意只有当前进程状态为 \texttt{ENV\_RUNNING} 才需要重启，否则扔弃继续等待即可。
+	
+	
+	\subsection*{syscall()}
+	
+	\par 简单将 \texttt{sys\_yield()} 加入可调用系统函数即可。
+	
+	\subsection*{i386\_main()}
+	
+	\par 原先已经提供了一个能够启动 \texttt{user/prime} 的代码，简单修改，将其拷贝三遍即可。
+	
+	\subsection*{Question 3}
+	\par 原因：因为所有的 \texttt{struct Env*} 都是指向内存初始化的时候声明的 \texttt{envs} 数组。实际上这个数组的寻址方式是固定的，且其为内核态数组其也不会被 COW 机制进行不需要的拷贝，因此不管是哪一个环境，访问 \texttt{env} 的数组总是固定的。
+	
+	\subsection*{Question 4}
+	\par 原因：因为我们无法保证新的用户程序会不会修改相关寄存器的值。如果不保存的话相关状态无法还原，我们代码就无法正确的恢复原来的状态。
+	
+	\par 位置：\texttt{kern/env.c}, 函数 \texttt{env\_pop\_tf} 会备份当前环境的状态。
+	
+	
+	\section{Exercise 7}
+	
+	\subsection*{sys\_exofork()}
+		
+		\par 按照函数给定的注释实现即可。注意由于操作系统中函数的返回值总是被存储在 \texttt{\%eax} 中，因此我们需要在最后将 \texttt{env\_alloc} 新建的环境的 \texttt{\%eax} 赋值为 0, 满足子环境返回 0 的要求。
+		
+	\subsection*{sys\_env\_set\_status()}
+	
+		\par 按照函数给定的注释实现即可, 没啥细节。
+		
+	
+	\subsection*{sys\_page\_alloc()}
+	
+		\par 按照函数给定的注释实现即可。唯一需要注意的是，如果在 \texttt{page\_insert} 插入的时候发生错误，我们需要将先前从空页表中提出来的空页再存回去。否则会导致内存泄漏。
+		
+	\subsection*{sys\_page\_map()}
+	
+		\par 按照函数给定的注释实现即可。注意需要检查所有的约束条件。
+		
+	\subsection*{sys\_page\_unmap()}
+		
+		\par 按照函数给定的注释实现即可。注意即使这一个页没有被分配，释放也可以被认为是成功的。
+		
+	\subsection*{syscall()}
+	
+		\par 将上述五个函数加入对应的函数调用列表即可。
+	
+	\section{Exercise 8}
+		
+	\subsection*{sys\_env\_set\_pgfault\_upcall()}
+		
+		\par 按照函数给定的注释实现即可。记得再实现结束后加入 \texttt{syscall()} 中函数调用列表。
+	
+	\section{Exercise 9}
+		
+	\subsection*{page\_fault\_handler()}
+		
+		\par 首先，如果没有设置用户态下页错误的处理函数，简单使用他们提供的代码即可。
+		
+		\par 否则我们需要将信息存储在当前处理器对应的异常栈上，首先确认压栈的位置。如果发生错误时侯的 \texttt{\%esp} 指向的是用户栈，则我们可以简单的压倒异常栈栈顶；否则我们可以根据 \texttt{\%esp} 得到异常栈栈顶位置。随后我们需要检查该片内存区域的权限以防无法访问的问题。
+		
+		\par 之后我们需要将错误信息逐次压入栈中。观察错误信息结构 \texttt{struct UTrapframe} 可以获知所有需要压入的信息，逐个存储即可。
+		
+		\par 最后我们需要设置调用处理函数的方式，以及处理函数结束后的返回地址。分别将处理函数指针压入捕获信息的 \texttt{\%eip} 寄存器， \texttt{struct UTrapframe}的下标压入捕获信息的 \texttt{\%esp} 寄存器即可。此时只需要调用 \texttt{env\_run} 便可进入处理函数了。
+		
+	\section{Exercise 10}
+	
+	\subsection*{pfentry.S}
+		
+		\par 我们需要实现的是恢复原来的相关寄存器状态，并且恢复执行代码。
+		
+		\par 第一步我们需要将 \texttt{\%eip} 压入发生错误之前的栈。这样子最后我们就可以利用 \texttt{ret} 语句，返回到错误发生的位置。观察栈结构，发现发生错误时 \texttt{\%esp} 相对位移为 \texttt{0x30}, \texttt{\%eip} 相对位移为 \texttt{0x28}. 据此简单实现即可。
+		
+		\par 第二步我们需要还原寄存器。寄存器相对栈顶的位移是 8, 因此将栈顶减去 8 后 \texttt{popal} 还原寄存器状态即可。
+		
+		\par 第三步我们需要还原标志位。标志位相对此时栈顶寄存器的位移是 4, 因此将栈顶减去 4 后 \texttt{popfl} 还原状态位即可。
+		
+		\par 最后只剩下我们修改后的发生错误时的栈顶坐标，将其移动到 \texttt{\%esp} 后返回即可。
+	
+		
+	\section{Exercise 11}
+		
+	\subsection*{set\_pgfault\_handler}
+		
+		\par 第一次声明页错误的时候，我们需要先声明异常栈。之后在设置页异常调用函数位我们在上一问中写的 \texttt{\_pgfault\_upcall}
+		
+		\par 其余细节可以看注释实现。
+		
+	\section{Exercise 12}
+	
+	\subsection*{pgfault()}
+	
+	\par 这里我们需要处理 COW 的问题。
+	
+	\par 在求出页地址后，如果该问题不是写时候的问题(检查 $\texttt{err \& FEC\_WR})$， 也不是 COW 的问题(一级页表权限没有 \texttt{PTE\_P}, 或者是二级页表权限没有 \texttt{PTE\_P} 或 \texttt{PTE\_COW})，则确实发生页错误。
+	
+	否则我们可以通过如下操作复制当前页：
+	
+	\begin{itemize}
+		\item 首先声明一个页，从临时地址映射过来，权限为 \texttt{PTE\_P,U,W}(该错误由用户态写引起)。将旧的页数据拷贝到新的页数据。
+		
+		\item 插入新建页到旧地址，权限位同上。
+		
+		\item 删除临时地址到新建位映射，防止用户误操作。
+	\end{itemize}
+	
+	\subsection*{duppage()}
+	
+	\par 这里我们需要处理 \texttt{fork} 时页复制的问题。
+	
+	\par 如果当前页是可写的 (页中\texttt{PTE\_W,PTE\_COW}) 至少有一个为真，则此时为写拷贝。我们需要同时将当前环境，和子环境下的内存页权限位同时设置为 \texttt{P,U,COW}，利用两次 \texttt{sys\_page\_map} 完成。
+	
+	\par 否则此时为读拷贝，不会产生 COW，因此只需要将子环境的页权限位设置为 \texttt{P,U} 只读即可。
+	
+	\subsection*{fork()}
+	
+	\par 首先我们得把页错误设置为上面的 \texttt{pgfault}, 否则遇到 COW 就会直接报错，而不是继续执行。
+	
+	\par 之后我们调用 \texttt{sys\_exofork} 完成子环境建立。
+	
+	\par 如果子环境返回，根据上面的设置其必须等到父环境将设置为可执行后在执行，因此只需要设置 \texttt{thisenv} 即可。
+	
+	\par 如果父环境返回，则我们需要将当前环境的相关页映射拷贝到子环境。但是异常栈除外! 其余的我们只需要判定本机手否有访问权限即可。如果有就 \texttt{duppage()}. 判定是否有权限类似于 \texttt{pgfault()}, 略。
+	
+	\par 之后我们需要给子环境设置页错误返回，可以抄上一个问题的实现。最后只需要将子环境设置为可以执行即可。
+	
+	\section{Exercise 13}
+	
+	\subsection*{trapentry.S, trap\_init()}
+	
+	\par 实际上你可以把它当成编号为 \texttt{IRQ\_OFFSET} 到 \texttt{IRQ\_OFFSET + 15} 的特殊的不需要记录错误码的异常。直接按照上次 Lab 的写法抄 16 次即可。
+	
+	
+	\section{Exercise 14}
+	
+	\subsection*{trap\_dispatch()}
+	
+	\par 按照注释完成即可，没有细节。
+	
+	\par 最大的坑点在于，你在实现系统调用 \texttt{sys\_destroy} 的时候，传入参数必须是 a1 而非当前环境的编号，因为此时可能会出现父线程杀死子线程的情况。	
+	
+	\section{Exercise 15}
+		
+	\subsection*{sys\_ipc\_recv()}
+		
+	\par 首先我们检查如果目标地址需要且没有对齐，则直接退出。否则我们可以直接设置当前的 \texttt{ipc} 状态为接收中，设置目标页地址，将当前环境设置为不可执行后，就可以挂起等发送端了。
+	
+	\subsection*{sys\_ipc\_try\_send()}
+	
+	\par 所有的异常情况注释已经完全讨论了所以我们直接按照注释抄就行了。
+	
+	\par 如果我们需要发送整页的信息，我们需要在发送成功后，额外将目标环境的 \texttt{ipc} 结构下权限信息进行相关设置。最后如果全部成功，我们就可以将目标环境接收状态撤出，置接受数据的来源为本机，接受的整数为参数给定值，寄存器 \texttt{\%eax} 作为返回值设置为 0。 之后目标环境就可以重新执行了。
+	
+	\par 唯一需要注意的是检查目标环境时候 \texttt{perm} 要为 0， 因为完全可以子线程向父线程发送信息。毋须满足上述约束。
+	
+	\par 上述两个函数需要加入系统调用中。
+	
+	\subsection*{ipc\_recv()}
+	
+	\par 接收端等待操作会在 \texttt{sys\_ipc\_recv()} 中完成，因此直接根据函数的注释进行相关参数的读取即可。
+		
+	\subsection*{ipc\_send()}
+	
+	\par 发送端发送的时候有可能接收端还没有进入接收状态。因此需要在每一次不成功的 \texttt{sys\_ipc\_try\_send()} 判断失败原因。如果失败是因为接收端没有进入接收态，则需要进行轮转等待后再次尝试；否则才可以返回错误。
+	
+		
+	
+		
+	
+	
+			
+\end{document}

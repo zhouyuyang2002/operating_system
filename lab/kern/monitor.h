@@ -21,5 +21,6 @@ int mon_showmappings(int argc, char **argv, struct Trapframe *tf);
 int mon_setperm(int argc, char **argv, struct Trapframe *tf);
 int moniter_ci(int argc, char **argv, struct Trapframe *tf);
 int moniter_si(int argc, char **argv, struct Trapframe *tf);
+int mon_quit(int argc, char **argv, struct Trapframe *tf);
 
 #endif	// !JOS_KERN_MONITOR_H

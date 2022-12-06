@@ -33,6 +33,7 @@ static struct Command commands[] = {
 	{ "continue", "Continue execution the environment in current tf", moniter_ci},
 	{ "si", "Continue execution the next instruction in current tf", moniter_si},
 	{ "stepi", "Continue execution the next instructionin current tf", moniter_si},
+	{ "quit", "exit the monitor", mon_quit},
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -46,6 +47,13 @@ mon_help(int argc, char **argv, struct Trapframe *tf)
 		cprintf("%s - %s\n", commands[i].name, commands[i].desc);
 	return 0;
 }
+
+int
+mon_quit(int argc, char **argv, struct Trapframe *tf)
+{
+	return -1;
+}
+
 
 int
 mon_kerninfo(int argc, char **argv, struct Trapframe *tf)
